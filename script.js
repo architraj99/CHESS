@@ -151,7 +151,7 @@ function getMoves(piece) {
         case "bishop" : return bishopMoves(piece);
         case "queen" : return queenMoves(piece);
         case "knight" : return knightMoves(piece);
-        case "king" : return knightMoves(piece);
+        case "king" : return kingMoves(piece);
         default: return [];
     }
 }
@@ -223,8 +223,13 @@ function handleBoardClick(event) {
     const clickedPiece = pieceAt(x, y);
     const move = selectedPiece ? targetMove(x, y) : null;
     if(selectedPiece && move) {
+        if(move.castle){
+            castle(selectedPiece, move);
+            return;
+        }
         finishMove(selectedPiece, move);
         return;
+        
     }
     if(clickedPiece && clickedPiece.color === currentTurn) {
         selectedPiece = clickedPiece;
@@ -318,7 +323,7 @@ function kingMoves(piece) {
 
     for(let offsetX = -1; offsetX <= 1; offsetX += 1) {
         for(let offsetY = -1; offsetY <= 1; offsetY += 1) {
-            if(offsetX === 0) {
+            if(offsetX === 0 && offsetY === 0) {
                 continue;
             }
             const x = piece.x + offsetX;
@@ -329,11 +334,19 @@ function kingMoves(piece) {
             }
         }
     }
+    if(!piece.moved && piece.x === 5) {
+        const rook = pieceAt(8, piece.y);
+        const pathIsClear = !pieceAt(6, piece.y) && !pieceAt(7, piece.y);
+
+        if(rook && rook.type === "rook" && rook.color === piece.color && !rook.moved && pathIsClear) {
+            moves.push({ x: 7, y: piece.y, castle: true});
+        }
+    }
     return moves;
 }
 
 function renderLastMove() {
-    document.querySelector(".gamecell").forEach((cell) => cell.classList.remove("last-move"));
+    document.querySelectorAll(".gamecell").forEach((cell) => cell.classList.remove("last-move"));
 
     if(!lastMove) {
         return;
@@ -341,3 +354,38 @@ function renderLastMove() {
     document.getElementById(squareKey(lastMove.from.x, lastMove.from.y)).classList.add("last-move");
     document.getElementById(squareKey(lastMove.to.x, lastMove.to.y)).classList.add("last-move");
 }
+
+function castle(king, move) {
+    const rook = pieceAt(8, king.y);
+    const previous = {x: king.x, y: king.y};
+
+    king.x = move.x;
+    king.y = move.y;
+    king.moved = true;
+    rook.x = 6;
+    rook.moved = true;
+    lastMove = {from: previous, to: {x: king.x, y: king.y}};
+    currentTurn = currentTurn === "white" ? "black" : "white";
+    selectedPiece = null;
+    legalTargets = [];
+    clearHighlights();
+    renderPieces();
+    renderLastMove();
+    updateTurnText();
+    flashTurn();
+}
+
+function resetGame() {
+    pieces = createStartingPieces();
+    currentTurn = "white";
+    selectedPiece = null;
+    legalTargets = [];
+    capturedPieces = [];
+    lastMove = null;
+    clearHighlights();
+    renderPieces();
+    renderLastMove();
+    updateTurnText();
+}
+
+document.getElementById("restart").addEventListener("click", resetGame);
