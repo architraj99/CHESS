@@ -207,6 +207,7 @@ function finishMove(piece, move) {
     legalTargets = [];
     clearHighlights();
     renderPieces();
+    renderLastMove();
     updateTurnText();
     flashTurn();
 }
@@ -329,4 +330,14 @@ function kingMoves(piece) {
         }
     }
     return moves;
+}
+
+function renderLastMove() {
+    document.querySelector(".gamecell").forEach((cell) => cell.classList.remove("last-move"));
+
+    if(!lastMove) {
+        return;
+    }
+    document.getElementById(squareKey(lastMove.from.x, lastMove.from.y)).classList.add("last-move");
+    document.getElementById(squareKey(lastMove.to.x, lastMove.to.y)).classList.add("last-move");
 }
