@@ -150,6 +150,8 @@ function getMoves(piece) {
         case "rook" : return rookMoves(piece);
         case "bishop" : return bishopMoves(piece);
         case "queen" : return queenMoves(piece);
+        case "knight" : return knightMoves(piece);
+        case "king" : return knightMoves(piece);
         default: return [];
     }
 }
@@ -298,4 +300,33 @@ function queenMoves(piece) {
         [1, 0], [-1, 0], [0, 1], [0, -1],
         [1, 1], [1, -1], [-1, 1], [-1, -1]
     ]);
+}
+
+function knightMoves(piece) {
+    const offsets = [
+        [1, 2], [2, 1], [2, -1], [1, -2],
+        [-1, -2], [-2, -1], [-2, 1], [-1, 2]
+    ];
+
+    return offsets .map(([offsetX, offsetY]) => ({ x: piece.x + offsetX, y: piece.y + offsetY}))
+    .filter((move) => canLand(piece, move.x, move.y));
+}
+
+function kingMoves(piece) {
+    const moves = [];
+
+    for(let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        for(let offsetY = -1; offsetY <= 1; offsetY += 1) {
+            if(offsetX === 0) {
+                continue;
+            }
+            const x = piece.x + offsetX;
+            const y = piece.y + offsetY;
+
+            if(canLand(piece, x, y)) {
+                moves.push({x,y});
+            }
+        }
+    }
+    return moves;
 }
