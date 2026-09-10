@@ -147,6 +147,9 @@ function canLand(piece, x, y) {
 function getMoves(piece) {
     switch (piece.type) {
         case "pawn" : return pawnMoves(piece);
+        case "rook" : return rookMoves(piece);
+        case "bishop" : return bishopMoves(piece);
+        case "queen" : return queenMoves(piece);
         default: return [];
     }
 }
@@ -256,4 +259,43 @@ function pawnMoves(piece) {
     });
 
     return moves;
+}
+
+function rayMoves(piece, directions) {
+    const moves = [];
+    directions.forEach(([stepX, stepY]) => {
+        let x = piece.x + stepX;
+        let y = piece.y + stepY;
+
+        while(insideBoard(x, y)) {
+            const occupant = pieceAt(x, y);
+
+            if(!occupant) {
+                moves.push({x, y});
+            }
+            else {
+                if(occupant.color !== piece.color) {
+                    moves.push({x, y});
+                }
+                break;
+            }
+
+            x += stepX;
+            y+=stepY;
+        }
+    });
+    return moves;
+}
+
+function rookMoves(piece) {
+    return rayMoves(piece, [[1, 0], [-1, 0], [0, 1], [0, -1]]);
+}
+function bishopMoves(piece) {
+    return rayMoves(piece, [[1, 1], [1, -1], [-1, 1], [-1, -1]]);
+}
+function queenMoves(piece) {
+    return rayMoves(piece, [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+        [1, 1], [1, -1], [-1, 1], [-1, -1]
+    ]);
 }
