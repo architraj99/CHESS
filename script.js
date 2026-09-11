@@ -131,6 +131,8 @@ let selectedPiece = null;
 let legalTargets = [];
 let capturedPieces = [];
 let lastMove = null;
+let gameOver = false;
+let drawOfferedBy = null;
 
 function insideBoard(x, y) {
     return x >= 1 && x <= 8 && y >= 1 && y <= 8;
@@ -144,16 +146,75 @@ function canLand(piece, x, y) {
     const occupant = pieceAt(x, y);
     return !occupant || occupant.color !== piece.color;
 }
-function getMoves(piece) {
-    switch (piece.type) {
-        case "pawn" : return pawnMoves(piece);
-        case "rook" : return rookMoves(piece);
-        case "bishop" : return bishopMoves(piece);
-        case "queen" : return queenMoves(piece);
-        case "knight" : return knightMoves(piece);
-        case "king" : return kingMoves(piece);
+
+function getPseudoMoves(piece) {
+    switch(piece.type) {
+        case "king": return kingMoves(piece);
+        case "queen": return queenMoves(piece);
+        case "pawn": return pawnMoves(piece);
+        case "knight": return knightMoves(piece);
+        case "rook": return rookMoves(piece);
+        case "bishop": return bishopMoves(piece);
         default: return [];
     }
+}
+
+function attackMoves(piece) {
+    if(piece.type === "pawn") {
+        const direction = piece.color === "white" ? 1 : -1;
+        return [-1, 1].map((offset) => ({x: piece.x + offset, y: piece.y + direction})).filter((move) => insideBoard(move.x, move.y));
+    }
+
+    if(piece.type === "king") {
+        const moves = [];
+        for(let offsetX = -1; offsetX <= 1; offsetX += 1) {
+
+            for(let offsetY = -1; offsetY <= 1; offsetY += 1) {
+                if(offsetX || offsetY) {
+                    const move = {x: piece.x + offsetX, y: piece.y + offsetY};
+
+                    if(insideBoard(move.x, move.y)) moves.push(move);
+                }
+            }
+        }
+        return moves;
+    }
+
+    return getPseudoMoves(piece).filter((move) => !move.castle);
+}
+
+function squareAttacked(x, y, byColor) {
+    return pieces.filter((piece) => !piece.captured && piece.color === byColor).some((piece) => attackMoves(piece).some((move) => move.x === x && move.y === y));
+}
+function kingInCheck(color) {
+    const king = pieces.find((piece) => !piece.captured && piece.color === color && piece.type === "king");
+    const enemy = color === "white" ? "black" : "white";
+
+    return Boolean(king && squareAttacked(king.x, king.y, enemy));
+}
+
+function moveKeepsKingSafe(piece, move) {
+    const oldX = piece.x;
+    const oldY = piece.y;
+    const captured = move.enPassant ? pieceAt(move.x, oldY) : pieceAt(move.x, move.y);
+    const capturedState = captured ? captured.captured : null;
+    piece.x = move.x;
+    piece.y = move.y;
+
+    if(captured) captured.captured = true;
+    const safe = !kingInCheck(piece.color);
+    piece.x = oldX;
+    piece.y = oldY;
+    if(captured) captured.captured = capturedState;
+
+    return safe;
+}
+
+function getMoves(piece) {
+   return getPseudoMoves(piece).filter((move) => {
+        const target = pieceAt(move.x, move.y);
+        return (!target || target.type !== "king") && moveKeepsKingSafe(piece, move);
+   });
 }
 
 function clearHighlights() {
@@ -191,7 +252,7 @@ function updateTurnText() {
 
 function finishMove(piece, move) {
     const previous = {x: piece.x, y: piece.y};
-    const captured = pieceAt(move.x, move.y);
+    const captured = move.enPassant ? pieceAt(move.x, piece.y) : pieceAt(move.x, move.y);
     if(captured) {
         captured.captured = true;
         captured.capturedBy = piece.color;
@@ -201,21 +262,26 @@ function finishMove(piece, move) {
     piece.x = move.x;
     piece.y = move.y;
     piece.moved = true;
-    lastMove = { from: previous, to: {x: piece.x, y: piece.y} };
+    lastMove ={ from: previous, to: { x: piece.x, y: piece.y },
+    pieceId: piece.id, pieceType: piece.type, doublePawn: piece.type === "pawn" && Math.abs(piece.y - previous.y) === 2};
     currentTurn = currentTurn === "white" ? "black" : "white";
     selectedPiece = null;
     legalTargets = [];
+
     clearHighlights();
     renderPieces();
     renderLastMove();
     renderCapturedPanels();
-    updateTurnText();
+
+    drawOfferedBy = null;
+    updateDrawButton();
+    evaluatePosition();
     flashTurn();
 }
 
 function handleBoardClick(event) {
     const cell = event.target.closest(".gamecell");
-    if(!cell) {
+    if(!cell || gameOver) {
         return;
     }
 
@@ -264,6 +330,13 @@ function pawnMoves(piece) {
 
         if(target && target.color !== piece.color) {
             moves.push({x: targetX, y: nextY});
+        }
+
+        if(!target &&  lastMove && lastMove.doublePawn && lastMove.pieceType === "pawn") {
+            const adjacent = pieceAt(targetX, piece.y);
+            if(adjacent && adjacent.id === lastMove.pieceId && adjacent.color !== piece.color) {
+                moves.push({x: targetX, y: nextY, enPassant: true});
+            }
         }
     });
 
@@ -335,11 +408,13 @@ function kingMoves(piece) {
             }
         }
     }
-    if(!piece.moved && piece.x === 5) {
+    if(!piece.moved && piece.x === 5 && !kingInCheck(piece.color)) {
         const rook = pieceAt(8, piece.y);
         const pathIsClear = !pieceAt(6, piece.y) && !pieceAt(7, piece.y);
+        const enemy = piece.color === "white" ? "black" : "white";
+        const safePath = !squareAttacked(6, piece.y, enemy) && !squareAttacked(7, piece.y, enemy);
 
-        if(rook && rook.type === "rook" && rook.color === piece.color && !rook.moved && pathIsClear) {
+        if(rook && rook.type === "rook" && rook.color === piece.color && !rook.moved && pathIsClear && safePath) {
             moves.push({ x: 7, y: piece.y, castle: true});
         }
     }
@@ -365,14 +440,16 @@ function castle(king, move) {
     king.moved = true;
     rook.x = 6;
     rook.moved = true;
-    lastMove = {from: previous, to: {x: king.x, y: king.y}};
+    lastMove = {from: previous, to: {x: king.x, y: king.y}, pieceId: king.id, pieceType: "king", doublePawn: false };
     currentTurn = currentTurn === "white" ? "black" : "white";
     selectedPiece = null;
     legalTargets = [];
     clearHighlights();
     renderPieces();
     renderLastMove();
-    updateTurnText();
+    drawOfferedBy = null;
+    updateDrawButton();
+    evaluatePosition();
     flashTurn();
 }
 
@@ -383,15 +460,81 @@ function resetGame() {
     legalTargets = [];
     capturedPieces = [];
     lastMove = null;
+    
+    gameOver = false;
+    drawOfferedBy = null;
+    document.querySelectorAll(".gamecell").forEach((cell) => cell.classList.remove("in-check"));
     clearHighlights();
     renderPieces();
     renderLastMove();
     renderCapturedPanels();
     updateTurnText();
+    updateDrawButton();
 }
 
 document.getElementById("restart").addEventListener("click", resetGame);
 
+function availableMoveExists(color) {
+    return pieces.filter((piece) => !piece.captured && piece.color === color).some((piece) => getMoves(piece).length > 0);
+}
+function highlightCheckedKing() {
+
+    document.querySelectorAll(".gamecell").forEach((cell) => cell.classList.remove("in-check"));
+    if(!kingInCheck(currentTurn)) return;
+    const king = pieces.find((piece) => !piece.captured && piece.color === currentTurn && piece.type === "king");
+    document.getElementById(squareKey(king.x, king.y)).classList.add("in-check");
+}
+
+function endGame(message) {
+    gameOver = true;
+    selectedPiece = null;
+    legalTargets = [];
+    clearHighlights();
+    turnElement.textContent = message;
+    document.getElementById("draw").disabled = true;
+}
+
+function evaluatePosition() {
+    highlightCheckedKing();
+    const checked = kingInCheck(currentTurn);
+    const canMove = availableMoveExists(currentTurn);
+    const name = currentTurn === "white" ? "White" : "Black";
+
+    if(!canMove && checked){
+        const winner = currentTurn === "white" ? "Black" : "White";
+        endGame(`Checkmate! ${winner} wins`);
+    }
+    else if(!canMove) {
+        endGame("Stalemate. The Match is a draw...");
+    }
+    else if(checked) {
+        turnElement.textContent = `${name} is in Check!`;
+    }
+    else {
+        updateTurnText();
+    }
+}
+
+function updateDrawButton() {
+    const button = document.getElementById("draw");
+    button.disabled = gameOver;
+    button.classList.toggle("draw-pending", Boolean(drawOfferedBy));
+    button.textContent = drawOfferedBy ? "Accept Draw" : "Offer Draw";
+}
+
+document.getElementById("draw").addEventListener("click", () => {
+    if(gameOver) return;
+
+    if(drawOfferedBy) {
+        endGame("Draw agreed. Match is over");
+        return;
+    }
+    drawOfferedBy = currentTurn;
+    const other = currentTurn === "white" ? "Black" : "White";
+
+    turnElement.textContent = `Draw offered. ${other} may accept or make a move.`;
+    updateDrawButton();
+});
 function capturePanelFor(color) {
     return document.getElementById(color === "white" ? "white-captures" : "black-captures");
 }
@@ -437,3 +580,17 @@ function renderCapturedPanels() {
 }
 
 renderCapturedPanels();
+
+boardElement.addEventListener("keydown", (event) => {
+    const cell = event.target.closest(".gamecell");
+    if(!cell || (event.key !== "Enter" && event.key !== " ")) {
+        return;
+    }
+    event.preventDefault();
+    cell.click();
+});
+
+window.addEventListener("load", () => {
+    updateTurnText();
+    renderCapturedPanels();
+});
