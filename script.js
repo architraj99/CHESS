@@ -250,9 +250,10 @@ function updateTurnText() {
     turnElement.textContent = `Its ${currentTurn === "white" ? "Whites" : "Blacks"} Turn!`;
 }
 
-function finishMove(piece, move) {
+function finishMove(piece, move, promotion = null) {
+    saveSnapshot();
     const previous = {x: piece.x, y: piece.y};
-    const captured = move.enPassant ? pieceAt(move.x, piece.y) : pieceAt(move.x, move.y);
+    const captured = move.enPassant ? pieceAt(move.x, previous.y) : pieceAt(move.x, move.y);
     if(captured) {
         captured.captured = true;
         captured.capturedBy = piece.color;
@@ -264,6 +265,8 @@ function finishMove(piece, move) {
     piece.moved = true;
     lastMove ={ from: previous, to: { x: piece.x, y: piece.y },
     pieceId: piece.id, pieceType: piece.type, doublePawn: piece.type === "pawn" && Math.abs(piece.y - previous.y) === 2};
+    if(promotion) piece.type = promotion;
+    recordMove(piece, previous, move, promotion, captured);
     currentTurn = currentTurn === "white" ? "black" : "white";
     selectedPiece = null;
     legalTargets = [];
@@ -276,6 +279,7 @@ function finishMove(piece, move) {
     drawOfferedBy = null;
     updateDrawButton();
     evaluatePosition();
+    moveCursor(move.x, move.y);
     flashTurn();
 }
 
@@ -290,26 +294,20 @@ function handleBoardClick(event) {
     const clickedPiece = pieceAt(x, y);
     const move = selectedPiece ? targetMove(x, y) : null;
     if(selectedPiece && move) {
-        if(move.castle){
-            castle(selectedPiece, move);
+        playMove(selectedPiece, move);
             return;
         }
-        finishMove(selectedPiece, move);
+        if(clickedPiece && clickedPiece.color === currentTurn){
+         selectedPiece = clickedPiece;
+         showMoves(clickedPiece);   
         return;
-        
-    }
-    if(clickedPiece && clickedPiece.color === currentTurn) {
-        selectedPiece = clickedPiece;
-        showMoves(clickedPiece);
-        return;
-    }
+        }
 
     selectedPiece = null;
     legalTargets = [];
     clearHighlights();
     updateTurnText();
 }
-boardElement.addEventListener("click", handleBoardClick);
 
 function pawnMoves(piece) {
     const moves = [];
@@ -418,6 +416,13 @@ function kingMoves(piece) {
             moves.push({ x: 7, y: piece.y, castle: true});
         }
     }
+    if(!piece.moved && piece.x === 5 && !kingInCheck(piece.color)) {
+        const rook = pieceAt(1, piece.y), enemy = piece.color === "white" ? "black" : "white";
+        if(rook && rook.type === "rook" && rook.color === piece.color && !rook.moved &&
+            [2, 3, 4].every(x => !pieceAt(x, piece.y)) &&
+            [3, 4].every(x => !squareAttacked(x, piece.y, enemy))
+        ) moves.push({x: 3, y: piece.y, castle: true});
+    }
     return moves;
 }
 
@@ -432,15 +437,17 @@ function renderLastMove() {
 }
 
 function castle(king, move) {
-    const rook = pieceAt(8, king.y);
+    saveSnapshot();
+    const rook = pieceAt(move.x === 7 ? 8 : 1, king.y);
     const previous = {x: king.x, y: king.y};
 
     king.x = move.x;
     king.y = move.y;
     king.moved = true;
-    rook.x = 6;
+    rook.x = move.x === 7 ? 6 : 4;
     rook.moved = true;
     lastMove = {from: previous, to: {x: king.x, y: king.y}, pieceId: king.id, pieceType: "king", doublePawn: false };
+    recordMove(king, previous, move);
     currentTurn = currentTurn === "white" ? "black" : "white";
     selectedPiece = null;
     legalTargets = [];
@@ -450,6 +457,7 @@ function castle(king, move) {
     drawOfferedBy = null;
     updateDrawButton();
     evaluatePosition();
+    moveCursor(king.x, king.y);
     flashTurn();
 }
 
@@ -463,6 +471,11 @@ function resetGame() {
     
     gameOver = false;
     drawOfferedBy = null;
+    snapshots = [];
+    moveHistory = [];
+    pendingPromotion = null;
+    document.getElementById("promotion-prompt").hidden = true;
+    document.getElementById("command-row").hidden = true;
     document.querySelectorAll(".gamecell").forEach((cell) => cell.classList.remove("in-check"));
     clearHighlights();
     renderPieces();
@@ -470,6 +483,8 @@ function resetGame() {
     renderCapturedPanels();
     updateTurnText();
     updateDrawButton();
+    renderHistory();
+    moveCursor(5, 2);
 }
 
 document.getElementById("restart").addEventListener("click", resetGame);
@@ -581,16 +596,184 @@ function renderCapturedPanels() {
 
 renderCapturedPanels();
 
-boardElement.addEventListener("keydown", (event) => {
-    const cell = event.target.closest(".gamecell");
-    if(!cell || (event.key !== "Enter" && event.key !== " ")) {
+let cursor = {x: 5, y: 2}, flipped = false, snapshots = [], moveHistory = [], pendingPromotion = null;
+const input = document.getElementById("command-input"), status = document.getElementById("keyboard-status");
+const coordinate = (x, y) => `${fileLetters[x - 1]}${y}`;
+
+function moveCursor(x, y) {
+
+    document.getElementById(squareKey(cursor.x, cursor.y)).classList.remove("cursor");
+    cursor = {x: Math.max(1, Math.min(8, x)), y: Math.max(1, Math.min(8, y))};
+
+    document.getElementById(squareKey(cursor.x, cursor.y)).classList.add("cursor");
+    const piece = pieceAt(cursor.x, cursor.y);
+    document.getElementById("cursor-position").textContent = `Cursor: ${coordinate(cursor.x, cursor.y).toUpperCase()}${piece ? ` · ${piece.color} ${piece.type}` : ""}`;
+}
+
+function saveSnapshot() {
+    snapshots.push({pieces: pieces.map(p => ({...p})), captured: capturedPieces.map(p => p.id), turn: currentTurn, last: lastMove, over: gameOver, draw: drawOfferedBy, cursor: {...cursor}});
+}
+
+function renderHistory() {
+    document.getElementById("move-history").replaceChildren(...moveHistory.map((move, i) => {
+        const li = document.createElement("li");
+        li.textContent = `${Math.floor(i / 2) + 1}${i % 2 ? "..." : "."} ${move}`;
+        return li;
+    }));
+}
+
+function recordMove(piece, from, move, promotion = null, captured = null) {
+
+    moveHistory.push(`${piece.color}: ${coordinate(from.x, from.y)} ${captured ? "×" : "→"} ${coordinate(move.x, move.y)}${promotion ? "=" + promotion[0].toUpperCase() : ""}`);
+    renderHistory();
+}
+
+function playMove(piece, move, promotion = null) {
+
+    if(move.castle) return castle(piece, move);
+    if(piece.type === "pawn" && (move.y === 1 || move.y === 8) && !promotion) {
+        pendingPromotion = {piece, move};
+        document.getElementById("promotion-prompt").hidden = false;
         return;
     }
+    finishMove(piece, move, promotion);
+    pendingPromotion = null;
+    document.getElementById("promotion-prompt").hidden = true;
+}
+
+function undoMove() {
+    if(!snapshots.length) {
+        status.textContent = "No moves to undo";
+        return;
+    }
+
+    const s = snapshots.pop();
+    pieces = s.pieces;
+    capturedPieces = s.captured.map(id => pieces.find(p => p.id == id));
+    currentTurn = s.turn;
+    lastMove = s.last;
+    gameOver = s.over;
+    drawOfferedBy = s.draw;
+    moveHistory.pop();
+    pendingPromotion = null;
+    selectedPiece = null;
+    legalTargets = [];
+    document.getElementById("promotion-prompt").hidden = true;
+    clearHighlights();
+    renderPieces();
+    renderLastMove();
+    renderCapturedPanels();
+    renderHistory();
+    updateDrawButton();
+    evaluatePosition();
+    moveCursor(s.cursor.x, s.cursor.y);
+    status.textContent = "Move undone";
+}
+
+
+function submitTypedMove() {
+
+    const m = /^([a-h])([1-8])([a-h])([1-8])([qrbn])?$/.exec(input.value.trim().toLowerCase());
+
+    if(!m) { status.textContent = "Use a move like e2e4 or e7e8q"; return; }
+
+    const x = fileLetters.indexOf(m[1]) + 1, y = +m[2], tx = fileLetters.indexOf(m[3]) + 1, ty = +m[4];
+
+    const piece = pieceAt(x, y), move = piece && piece.color === currentTurn && getMoves(piece).find(p => p.x === tx && p.y === ty);
+
+    if(!move || gameOver || (m[5] && (piece.type !== "pawn" || (ty !== 1 && ty !== 8)))) {
+
+        status.textContent = "That move is not legal"; return;
+    }
+
+    document.getElementById("command-row").hidden = true; input.blur(); moveCursor(tx, ty);
+
+    playMove(piece, move, {q: "queen", r: "rook", b: "bishop", n: "knight"}[m[5]]);
+
+}
+
+document.addEventListener("keydown", event => {
+    const key = event.key.toLowerCase(), row = document.getElementById("command-row");
+    if(document.activeElement === input) {
+
+        if(key === "escape" || key === "enter") {
+            event.preventDefault();
+            if(key === "enter") submitTypedMove();
+            else {
+                row.hidden = true;
+                input.blur();
+            }
+            return;
+        }
+        if(event.altKey || event.ctrlKey || event.metaKey) return;
+        if(pendingPromotion) {
+            const choice = {
+                q: "queen", r: "rook", b:  "bishop", n: "knight", enter: "queen"
+            }[key];
+            if(choice) {
+                event.preventDefault();
+                const {piece, move} = pendingPromotion;
+                playMove(piece, move, choice);
+            }
+            else if(key === "escape") {
+                event.preventDefault();
+                pendingPromotion = null;
+                document.getElementById("promotion-prompt").hidden = true;
+            }
+            return;
+        }
+    }
+    
+ const arrows = {arrowup: [0, 1], arrowdown: [0, -1], arrowleft: [-1, 0], arrowright: [1, 0]};
+
+    if(arrows[key]) { event.preventDefault(); const [dx, dy] =arrows[key];
+        
+    const sign = flipped ? -1 : 1; moveCursor(cursor.x + dx * sign, cursor.y + dy * sign); return; }
+
+    if(!["enter", "escape", "/", "n", "d", "y", "f", "h", "u"].includes(key)) return;
+
     event.preventDefault();
-    cell.click();
+
+    if(key === "enter") handleBoardClick({target: 
+ document.getElementById(squareKey(cursor.x, cursor.y))});
+
+    if(key === "escape") {
+       selectedPiece = null; 
+
+        legalTargets = [];
+
+       clearHighlights(); 
+
+       updateTurnText(); 
+    }
+    if(key === "/") {
+
+        row.hidden = false;
+        input.value = "";
+        input.focus();
+    }
+    if(key === "n") resetGame();
+
+    if(key === "u") undoMove();
+
+    if(key === "d" && !drawOfferedBy && !gameOver) 
+    document.getElementById("draw").click();
+
+    if(key === "y" && drawOfferedBy && !gameOver) { endGame("Draw agreed. Match is over."); }
+
+    if(key === "f") { flipped = !flipped; 
+
+    boardElement.classList.toggle("flipped", flipped); }
+
+    if(key === "h")
+    { const help = document.getElementById("keyboard-help"); 
+
+     help.hidden = !help.hidden;
+    }
 });
 
 window.addEventListener("load", () => {
     updateTurnText();
     renderCapturedPanels();
+    moveCursor(5, 2);
 });

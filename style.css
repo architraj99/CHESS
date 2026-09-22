@@ -308,3 +308,65 @@ body {
     outline: 3px solid #f2b632;
     outline-offset: -3px;
 }
+
+.game-heading {
+    margin: 0 0 12px 40px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #111;
+    border-radius: 5px;
+    text-align: center;
+    font-size: 23px;
+}
+
+.gamecell, #restart, #draw {
+    pointer-events: none;
+    cursor: default;
+}
+
+.gamecell.cursor {
+    outline: 4px solid #f2b632;
+    outline-offset: -4px;
+    z-index: 2;
+    box-shadow: 0 0 0 2px #111;
+}
+
+.gamecell.selected {
+    outline-color: #61b0ed;
+
+}
+
+#board.flipped {
+    transform: rotate(180deg);
+}
+
+#board.flipped .gamecell, #board.flipped .cellprefix {
+    transform: rotate(180deg);
+}
+
+#cursor-position, #keyboard-status,
+#command-row, #promotion-prompt, #keyboard-help {
+    margin: 8px 0 0 40px;
+    padding: 8px;
+
+    background: #fff;
+    border: 1px solid #111;
+    border-radius: 5px;
+    font-size: 13px;
+}
+
+#command-input {
+    width: 92px;
+    font: inherit;
+    padding: 5px;
+}
+#move-history {
+    max-height: 190px;
+    overflow-y: auto;
+    padding-left: 22px;
+    font-size: 13px;
+}
+
+[hidden] {
+    display: none !important;
+}

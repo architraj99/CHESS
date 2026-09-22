@@ -18,16 +18,23 @@
             </aside>
 
             <main id="game">
+                <h1 class="game-heading">Keyboard Chess</h1>
                 <div id="board" aria-label="Chess board"></div>
                 <div id="turn" aria-live="polite">Its White's Turn!</div>
 
                 <div class="game-actions">
-                    <button id="restart" type="button">New Game</button>  
-                    <button id="draw" type="button">Offer Draw</button>
+                    <button id="restart" type="button">N · New Game</button>  
+                    <button id="draw" type="button">D · Offer Draw</button>
                 </div>
-                <p class="help-text">Click one of your pieces, then click a green square. White moves first!</p>
+                <p class="help-text">Arrow Keys: Move · Enter: Select/Move · Esc: Cancel ·
+                    /: Type move · U: Undo · F: Flip · N: New · D/Y: Draw · H: Help</p>
+                    <p id="cursor-position" aria-live="polite">Cursor: E2</p>
+                    <p id="keyboard-status" role="status" aria-live="polite"></p>
+                    
+                    <div id="command-row" hidden><label>Type a move: <input id="command-input" placeholder="e2e4" maxlength="5" autocomplete="off"></label> Enter to play · Esc to Cancel</div>
+                    <p id="promotion-prompt" hidden>Promote Pawn: Q Queen · R Rook · B Bishop · N Knight · Enter Queen</p>
+                    <p id="keyboard-help" hidden>Use arrows to highlight your piece, Enter to select, then Enter on a green square. Type e7e8n to promote to a knight.</p>
             </main>
-
 
             <aside class="capture-panel" id="black-captures" aria-live="polite">
                 <h2>Captured by Black</h2>
@@ -35,6 +42,7 @@
 
                 <p class="pawn-count" data-role="pawn-count">White pawns lost: 0/8</p>
                 <p class="pawn-names" data-role="pawn-names">Pawns: none</p>
+                <h3>Move history</h3><ol id="move-history" aria-live="polite"></ol>
             </aside>
 
         </div>
