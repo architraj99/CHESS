@@ -17,6 +17,9 @@ then press Enter. This is useful if you already know the square names.
 
 ## Keyboard controls
 
+W  FOR SCROLL UP
+S FOR SCROLL DOWN
+
 Arrow keys ----- Move the highlighted square around the board 
 
 Enter ---- Select a piece or make a move 
