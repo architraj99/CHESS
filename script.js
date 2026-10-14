@@ -777,3 +777,25 @@ window.addEventListener("load", () => {
     renderCapturedPanels();
     moveCursor(5, 2);
 });
+
+
+document.addEventListener("wheel", function(e) {
+    e.preventDefault();
+}, {passive: false});
+
+document.addEventListener("keydown", function(e) {
+    if(document.activeElement === input) return;
+    if(e.ctrlKey || e.altKey || e.metaKey) return;
+
+    let key = e.key.toLowerCase();
+
+    if(key === "w") {
+        e.preventDefault();
+        window.scrollBy(0, -120);
+    }
+
+    if(key === "s") {
+        e.preventDefault();
+        window.scrollBy(0, 120);
+    }
+});
